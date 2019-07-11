@@ -5,7 +5,7 @@ using namespace std;
 #define pi (2*acos(0.0))
 #define N 4
 
-ofstream stage1;
+ofstream stage1, stage2, stage3;
 
 struct point
 {
@@ -13,7 +13,30 @@ struct point
 };
 
 struct point eye, look, up;
-double near, far, fovY, aspectRatio;
+struct point l, r, u;
+double near, far, fovY, aspectRatio, fovX;
+
+point crossProduct(point p, point q)
+{
+    point result;
+
+    result.x = p.y*q.z - p.z*q.y;
+    result.y = p.z*q.x - p.x*q.z;
+    result.z = p.x*q.y - p.y*q.x;
+
+    return result;
+}
+
+double dotProduct(point p, point q)
+{
+    double result = 0.0;
+
+    result += p.x*q.x;
+    result += p.y*q.y;
+    result += p.z*q.z;
+
+    return result;
+}
 
 class Matrix
 {
@@ -57,17 +80,41 @@ public:
 };
 
 stack<Matrix> stck;
+Matrix V, P, T, R;
 
 void init()
 {
     stage1.open("stage1.txt");
+    stage2.open("stage2.txt");
+    stage3.open("stage3.txt");
+
     cin >> eye.x >> eye.y >> eye.z;
     cin >> look.x >> look.y >> look.z;
     cin >> up.x >> up.y >> up.z;
     cin >> fovY >> aspectRatio >> near >> far;
+
+    l.x = look.x - eye.x;
+    l.y = look.y - eye.y;
+    l.z = look.z - eye.z;
+
+    double lValue = sqrt(l.x*l.x + l.y*l.y + l.z*l.z);
+    l.x /= lValue;
+    l.y /= lValue;
+    l.z /= lValue;
+
+    r = crossProduct(l, up);
+    double rValue = sqrt(r.x*r.x + r.y*r.y + r.z*r.z);
+    r.x /= rValue;
+    r.y /= rValue;
+    r.z /= rValue;
+
+    u = crossProduct(r, l);
+
+    T.identityM();
+    R.identityM();
 }
 
-Matrix matMultiply(Matrix m1, Matrix m2)
+Matrix matrixMultiplication(Matrix m1, Matrix m2)
 {
     Matrix result;
 
@@ -81,28 +128,6 @@ Matrix matMultiply(Matrix m1, Matrix m2)
             }
         }
     }
-
-    return result;
-}
-
-point crossProduct(point p, point q)
-{
-    point result;
-
-    result.x = p.y*q.z - p.z*q.y;
-    result.y = p.z*q.x - p.x*q.z;
-    result.z = p.x*q.y - p.y*q.x;
-
-    return result;
-}
-
-double dotProduct(point p, point q)
-{
-    double result = 0.0;
-
-    result += p.x*q.x;
-    result += p.y*q.y;
-    result += p.z*q.z;
 
     return result;
 }
@@ -121,7 +146,7 @@ point rodrigues(point xVec, point aVec, double theta)
     return result;
 }
 
-void printMatrix(Matrix m)
+void printMatrixStage1(Matrix m)
 {
     for(int i = 0; i < N - 1; i++)
     {
@@ -136,7 +161,37 @@ void printMatrix(Matrix m)
     stage1 << endl;
 }
 
-void triangle()
+void printMatrixStage2(Matrix m)
+{
+    for(int i = 0; i < N - 1; i++)
+    {
+        for(int j = 0; j < N - 1; j++)
+        {
+            stage2 << fixed << setprecision(7) << m.arr[j][i];
+            if(j < N-2) stage2 << " ";
+        }
+        stage2 << endl;
+    }
+
+    stage2 << endl;
+}
+
+void printMatrixStage3(Matrix m)
+{
+    for(int i = 0; i < N - 1; i++)
+    {
+        for(int j = 0; j < N - 1; j++)
+        {
+            stage3 << fixed << setprecision(7) << m.arr[j][i];
+            if(j < N-2) stage3 << " ";
+        }
+        stage3 << endl;
+    }
+
+    stage3 << endl;
+}
+
+Matrix triangle()
 {
     point a, b, c;
     cin >> a.x >> a.y >> a.z;
@@ -156,12 +211,14 @@ void triangle()
     triangleMatrix.arr[0][3] = 1.0; triangleMatrix.arr[1][3] = 1.0; triangleMatrix.arr[2][3] = 1.0; triangleMatrix.arr[3][3] = 1.0;
 
     Matrix result;
-    result = matMultiply(stck.top(), triangleMatrix);
+    result = matrixMultiplication(stck.top(), triangleMatrix);
 
     //stck.top().print();
     //triangleMatrix.print();
 
-    printMatrix(result);
+    printMatrixStage1(result);
+
+    return result;
 }
 
 void translate()
@@ -177,7 +234,7 @@ void translate()
     translationMatrix.arr[2][N-1] = tz;
 
     Matrix result;
-    result = matMultiply(stck.top(), translationMatrix);
+    result = matrixMultiplication(stck.top(), translationMatrix);
 
     //result.forStack = true;
     stck.push(result);
@@ -196,7 +253,7 @@ void scale()
     scalingMatrix.arr[2][2] = sz;
 
     Matrix result;
-    result = matMultiply(stck.top(), scalingMatrix);
+    result = matrixMultiplication(stck.top(), scalingMatrix);
 
     //result.forStack = true;
     stck.push(result);
@@ -233,7 +290,7 @@ void rotateM()
     //rotationMatrix.arr[3][3] = 1.0;
 
     Matrix result;
-    result = matMultiply(stck.top(), rotationMatrix);
+    result = matrixMultiplication(stck.top(), rotationMatrix);
 
     //stck.top().print();
     //rotationMatrix.print();
@@ -255,6 +312,52 @@ void pop()
     stck.pop();
 }
 
+Matrix stage2Task(Matrix m)
+{
+    //Matrix T, R;
+
+    T.arr[0][3] = -1.0*eye.x;
+    T.arr[1][3] = -1.0*eye.y;
+    T.arr[2][3] = -1.0*eye.z;
+
+    R.arr[0][0] = r.x; R.arr[0][1] = r.y; R.arr[0][2] = r.z;
+    R.arr[1][0] = u.x; R.arr[1][1] = u.y; R.arr[1][2] = u.z;
+    R.arr[2][0] = -1.0*l.x; R.arr[2][1] = -1.0*l.y; R.arr[2][2] = -1.0*l.z;
+
+    V = matrixMultiplication(R, T);
+
+    Matrix result;
+
+    result = matrixMultiplication(V, m);
+
+    printMatrixStage2(result);
+
+    return result;
+}
+
+Matrix stage3Task(Matrix m)
+{
+    double t, r;
+
+    fovX = fovY*aspectRatio;
+    t = near*tan((fovY/2)*pi/180.0);
+    r = near*tan((fovX/2)*pi/180.0);
+
+    P.arr[0][0] = near/r;
+    P.arr[1][1] = near/t;
+    P.arr[2][2] = -1*(far+near)/(far-near);
+    P.arr[2][3] = (-2*far*near)/(far-near);
+    P.arr[3][2] = -1.0;
+
+    Matrix result;
+
+    result = matrixMultiplication(P, m);
+
+    printMatrixStage3(result);
+
+    return result;
+}
+
 int main()
 {
     freopen("scene.txt", "r", stdin);
@@ -271,7 +374,12 @@ int main()
     {
         cin >> command;
 
-        if(command == "triangle") triangle();
+        if(command == "triangle")
+        {
+            Matrix m = triangle();
+            Matrix n = stage2Task(m);
+            stage3Task(n);
+        }
         else if(command == "translate") translate();
         else if(command == "scale") scale();
         else if(command == "rotate") rotateM();
